@@ -1,298 +1,461 @@
 /**
  * App.tsx - Aplicativo de Consultas Médicas
- * Versão 3: Componentização
+ * Versão 5: Consultas Reais + Formulário de Agendamento
  *
  * Evolução:
  * Aula 1 (23/03) → MVP Simples
  * Aula 2 (06/04) → Integração TypeScript
- * Aula 3 (13/04) → Componentização ← VOCÊ ESTÁ AQUI
+ * Aula 3 (13/04) → Componentização
+ * Aula 4 (04/05) → Integração com Backend (médicos e pacientes)
+ * Aula 5 (11/05) → Consultas + Formulário de Agendamento ← VOCÊ ESTÁ AQUI
  */
 
-import React, { useState } from "react";
-import { View, Text, StyleSheet, ScrollView } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+ View,
+ Text,
+ StyleSheet,
+ FlatList,
+ ActivityIndicator,
+ Modal,
+ TextInput,
+ TouchableOpacity,
+ ScrollView,
+ KeyboardAvoidingView,
+ Platform,
+} from "react-native";
 import { StatusBar } from "expo-status-bar";
 
-// Importando a modelagem TypeScript que criamos nas aulas anteriores
-import { Especialidade } from "./src/types/especialidade";
-import { Paciente } from "./src/types/paciente";
+// Importando a modelagem TypeScript
 import { Medico } from "./src/interfaces/medico";
+import { Paciente } from "./src/types/paciente";
 import { Consulta } from "./src/interfaces/consulta";
 
+// Importando os serviços que consomem a API real
+import { listarMedicos } from "./src/services/medicoService";
+import { listarPacientes } from "./src/services/pacienteService";
+import {
+ listarConsultas,
+ agendarConsulta,
+ confirmarConsulta,
+ cancelarConsulta,
+ NovaConsulta,
+} from "./src/services/consultaService";
+
+// Cores dos badges de status
+const STATUS_CORES: Record<string, string> = {
+ agendada: "#e3f2fd",
+ confirmada: "#d4edda",
+ realizada: "#e8f5e9",
+ cancelada: "#f8d7da",
+};
+
+const STATUS_TEXTO_CORES: Record<string, string> = {
+ agendada: "#1565c0",
+ confirmada: "#155724",
+ realizada: "#1b5e20",
+ cancelada: "#721c24",
+};
+
 export default function App() {
-  // Dados base (simulando o que tínhamos no backend)
-  const cardiologia: Especialidade = {
-    id: 1,
-    nome: "Cardiologia",
-    descricao: "Cuidados com o coração",
-  }
+ // === ESTADOS DOS DADOS ===
+ const [medicos, setMedicos] = useState<Medico[]>([]);
+ const [pacientes, setPacientes] = useState<Paciente[]>([]);
+ const [consultas, setConsultas] = useState<Consulta[]>([]);
+ const [carregando, setCarregando] = useState(true);
+ const [erro, setErro] = useState<string | null>(null);
 
-const medico1: Medico = {
-    id: 1,
-    nome: "Dr. Roberto Silva",
-    crm: "CRM12345",
-    especialidade: cardiologia,
-    ativo: true,
-  };
+ // === ESTADOS DO FORMULÁRIO ===
+ const [mostrarForm, setMostrarForm] = useState(false);
+ const [salvando, setSalvando] = useState(false);
+ const [formMedicoId, setFormMedicoId] = useState("");
+ const [formPacienteId, setFormPacienteId] = useState("");
+ const [formDataHora, setFormDataHora] = useState("2026-05-20T10:00:00");
+ const [formValor, setFormValor] = useState("");
+ const [formObservacoes, setFormObservacoes] = useState("");
 
-  const paciente1: Paciente = {
-    id: 1,
-    nome: "Carlos Andrade",
-    cpf: "123.456.789-00",
-    email: "carlos@email.com",
-    telefone: "(11) 98765-4321",
-  };
+ useEffect(() => {
+ carregarDados();
+ }, []);
 
-  // Estado da consulta
-  const [consulta, setConsulta] = useState<Consulta>({
-    id: 1,
-    medico: medico1,
-    paciente: paciente1,
-    data: new Date(2026, 2, 10), // 10/03/2026
-    valor: 350,
-    status: "agendada",
-    observacoes: "Consulta de rotina",
-  });
+ async function carregarDados() {
+ try {
+ setCarregando(true);
+ setErro(null);
 
-// Funções para manipular a consulta
-  function confirmarConsulta() {
-    setConsulta({
-      ...consulta,
-      status: "confirmada",
-    });
-  }
+ // Promise.all executa as 3 requisições em paralelo
+ const [listaMedicos, listaPacientes, listaConsultas] = await Promise.all([
+ listarMedicos(),
+ listarPacientes(),
+ listarConsultas(),
+ ]);
 
-  function cancelarConsulta() {
-    setConsulta({
-      ...consulta,
-      status: "cancelada",
-    });
-  }
+ setMedicos(listaMedicos);
+ setPacientes(listaPacientes);
+ setConsultas(listaConsultas);
+ } catch (error) {
+ setErro(
+ "Não foi possível carregar os dados.\nVerifique se o backend está rodando em http://localhost:8080"
+ );
+ } finally {
+ setCarregando(false);
+ }
+ }
 
-  // Função para formatar valor em reais
-  function formatarValor(valor: number): string {
-    return valor.toLocaleString("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    });
-  }
-// Função para formatar data
-  function formatarData(data: Date): string {
-    return data.toLocaleDateString("pt-BR");
-  }
+ // Formata "2026-05-20T09:00:00" → "20/05/2026 às 09:00"
+ function formatarDataHora(dataHora: string): string {
+ const data = new Date(dataHora);
+ const dia = data.toLocaleDateString("pt-BR");
+ const hora = data.toLocaleTimeString("pt-BR", {
+ hour: "2-digit",
+ minute: "2-digit",
+ });
+ return `${dia} às ${hora}`;
+ }
 
-  return (
-    <View style={styles.container}>
-      <StatusBar style="light" />
-      
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Cabeçalho */}
-        <View style={styles.header}>
-          <Text style={styles.titulo}>Sistema de Consultas</Text>
-          <Text style={styles.subtitulo}>Consulta #{consulta.id}</Text>
-        </View>
- {/* Card da Consulta */}
-        <View style={styles.card}>
-          {/* Status Badge */}
-          <View style={[
-            styles.statusBadge,
-            consulta.status === "confirmada" && styles.statusConfirmada,
-            consulta.status === "cancelada" && styles.statusCancelada,
-          ]}>
-            <Text style={styles.statusTexto}>{consulta.status.toUpperCase()}</Text>
-          </View>
+ async function handleAgendarConsulta() {
+ if (!formMedicoId || !formPacienteId || !formDataHora || !formValor) {
+ alert("Preencha todos os campos obrigatórios (*).");
+ return;
+ }
 
-          {/* Informações do Médico */}
-          <View style={styles.secao}>
-            <Text style={styles.label}>👨‍⚕️ Médico</Text>
-            <Text style={styles.valor}>{consulta.medico.nome}</Text>
-            <Text style={styles.info}>CRM: {consulta.medico.crm}</Text>
-            <Text style={styles.info}>{consulta.medico.especialidade.nome}</Text>
-          </View>
-{/* Informações do Paciente */}
-          <View style={styles.secao}>
-            <Text style={styles.label}>👤 Paciente</Text>
-            <Text style={styles.valor}>{consulta.paciente.nome}</Text>
-            <Text style={styles.info}>CPF: {consulta.paciente.cpf}</Text>
-            <Text style={styles.info}>Email: {consulta.paciente.email}</Text>
-            {consulta.paciente.telefone && (
-              <Text style={styles.info}>Tel: {consulta.paciente.telefone}</Text>
-            )}
-          </View>
+ try {
+ setSalvando(true);
 
-          {/* Informações da Consulta */}
-          <View style={styles.secao}>
-            <Text style={styles.label}>📅 Dados da Consulta</Text>
-            <Text style={styles.valor}>Data: {formatarData(consulta.data)}</Text>
-            <Text style={styles.valor}>Valor: {formatarValor(consulta.valor)}</Text>
-            {consulta.observacoes && (
-              <Text style={styles.observacoes}>{consulta.observacoes}</Text>
-            )}
-          </View>
-{/* Botões de Ação */}
-          <View style={styles.acoes}>
-            {consulta.status === "agendada" && (
-              <>
-                <View style={styles.botaoContainer}>
-                  <Button
-                    title="Confirmar Consulta"
-                    onPress={confirmarConsulta}
-                    color="#4CAF50"
-                  />
-                </View>
-                <View style={styles.botaoContainer}>
-                  <Button
-                    title="Cancelar Consulta"
-                    onPress={cancelarConsulta}
-                    color="#F44336"
-                  />
-                </View>
-              </>
-            )}
-            {consulta.status === "confirmada" && (
-              <View style={styles.mensagem}>
-                <Text style={styles.mensagemTexto}>✓ Consulta confirmada com sucesso!</Text>
-              </View>
-            )}
-            {consulta.status === "cancelada" && (
-              <View style={styles.mensagemCancelada}>
-                <Text style={styles.mensagemTexto}>✗ Consulta cancelada</Text>
-              </View>
-            )}
-          </View>
-        </View>
-      </ScrollView>
-    </View>
-  );
+ const novaConsulta: NovaConsulta = {
+ medicoId: Number(formMedicoId),
+ pacienteId: Number(formPacienteId),
+ dataHora: formDataHora,
+ status: "agendada",
+ valor: Number(formValor),
+ observacoes: formObservacoes || undefined,
+ };
+
+ const consultaCriada = await agendarConsulta(novaConsulta);
+ // Adiciona a nova consulta ao final da lista sem recarregar tudo
+ setConsultas((prev) => [...prev, consultaCriada]);
+
+ // Limpa e fecha o formulário
+ setFormMedicoId("");
+ setFormPacienteId("");
+ setFormDataHora("2026-05-20T10:00:00");
+ setFormValor("");
+ setFormObservacoes("");
+ setMostrarForm(false);
+ } catch (error) {
+ alert("Erro ao agendar consulta.\nVerifique os IDs de médico e paciente.");
+ } finally {
+ setSalvando(false);
+ }
+ }
+
+ async function handleConfirmarConsulta(consulta: Consulta) {
+ try {
+ const atualizada = await confirmarConsulta(consulta);
+ // Substitui a consulta antiga pela atualizada na lista
+ setConsultas((prev) =>
+ prev.map((c) => (c.id === atualizada.id ? atualizada : c))
+ );
+ } catch {
+ alert("Erro ao confirmar consulta.");
+ }
+ }
+
+ async function handleCancelarConsulta(consulta: Consulta) {
+ try {
+ const atualizada = await cancelarConsulta(consulta);
+ setConsultas((prev) =>
+ prev.map((c) => (c.id === atualizada.id ? atualizada : c))
+ );
+ } catch {
+ alert("Erro ao cancelar consulta.");
+ }
+ }
+
+ return (
+ <View style={styles.container}>
+ <StatusBar style="light" />
+
+ <FlatList
+ contentContainerStyle={styles.scrollContent}
+ data={[]}
+ renderItem={null}
+ ListHeaderComponent={
+ <>
+ {/* Cabeçalho */}
+ <View style={styles.header}>
+ <Text style={styles.titulo}>Sistema de Consultas</Text>
+ <Text style={styles.subtitulo}>Dados do Backend</Text>
+ </View>
+
+ {carregando && (
+ <ActivityIndicator
+ size="large"
+ color="#fff"
+ style={{ marginTop: 40 }}
+ />
+ )}
+
+ {erro && (
+ <View style={styles.erroContainer}>
+ <Text style={styles.erroTexto}>{erro}</Text>
+ </View>
+ )}
+
+ {!carregando && !erro && (
+ <>
+ {/* Lista de Médicos */}
+ <Text style={styles.secaoTitulo}>
+ 👨‍⚕️ Médicos ({medicos.length})
+ </Text>
+ {medicos.map((medico) => (
+ <View key={medico.id} style={styles.card}>
+ <Text style={styles.cardNome}>{medico.nome}</Text>
+ <Text style={styles.cardInfo}>CRM: {medico.crm}</Text>
+ <Text style={styles.cardInfo}>
+ {medico.especialidade?.nome ?? " - "}
+ </Text>
+ <View
+ style={[
+ styles.badge,
+ medico.ativo ? styles.badgeAtivo : styles.badgeInativo,
+ ]}
+ >
+ <Text style={styles.badgeTexto}>
+ {medico.ativo ? "Ativo" : "Inativo"}
+ </Text>
+ </View>
+ </View>
+ ))}
+
+ {/* Lista de Pacientes */}
+ <Text style={[styles.secaoTitulo, { marginTop: 24 }]}>
+ 👤 Pacientes ({pacientes.length})
+ </Text>
+ {pacientes.map((paciente) => (
+ <View key={paciente.id} style={styles.card}>
+ <Text style={styles.cardNome}>{paciente.nome}</Text>
+ <Text style={styles.cardInfo}>CPF: {paciente.cpf}</Text>
+ <Text style={styles.cardInfo}>{paciente.email}</Text>
+ {paciente.telefone && (
+ <Text style={styles.cardInfo}>
+ Tel: {paciente.telefone}
+ </Text>
+ )}
+ </View>
+ ))}
+
+ {/* ─── SEÇÃO DE CONSULTAS (NOVA) ─── */}
+ <View style={styles.secaoHeader}>
+ <Text style={styles.secaoTituloConsultas}>
+ 📅 Consultas ({consultas.length})
+ </Text>
+ <TouchableOpacity
+ style={styles.botaoAgendar}
+ onPress={() => setMostrarForm(true)}
+ >
+ <Text style={styles.botaoAgendarTexto}>+ Agendar</Text>
+ </TouchableOpacity>
+ </View>
+
+ {consultas.map((consulta) => (
+ <View key={consulta.id} style={styles.card}>
+ {/* Badge de status colorido */}
+ <View
+ style={[
+ styles.statusBadge,
+ {
+ backgroundColor:
+ STATUS_CORES[consulta.status] ?? "#f0f0f0",
+ },
+ ]}
+ >
+ <Text
+ style={[
+ styles.statusTexto,
+ {
+ color:
+ STATUS_TEXTO_CORES[consulta.status] ?? "#333",
+ },
+ ]}
+ >
+ {consulta.status.toUpperCase()}
+ </Text>
+ </View>
+
+ <Text style={styles.cardNome}>
+ Dr(a). {consulta.medico?.nome}
+ </Text>
+ <Text style={styles.cardInfo}>
+ 👤 {consulta.paciente?.nome}
+ </Text>
+ <Text style={styles.cardInfo}>
+ 📅 {formatarDataHora(consulta.dataHora)}
+ </Text>
+ <Text style={styles.cardInfo}>
+ 💰{" "}
+ {Number(consulta.valor).toLocaleString("pt-BR", {
+ style: "currency",
+ currency: "BRL",
+ })}
+ </Text>
+ {consulta.observacoes && (
+ <Text style={styles.cardObservacoes}>
+ 📝 {consulta.observacoes}
+ </Text>
+ )}
+
+ {/* Botões só aparecem quando a consulta está agendada */}
+ {consulta.status === "agendada" && (
+ <View style={styles.acoesContainer}>
+ <TouchableOpacity
+ style={[styles.botaoAcao, styles.botaoConfirmar]}
+ onPress={() => handleConfirmarConsulta(consulta)}
+ >
+ <Text style={styles.botaoAcaoTexto}>✓ Confirmar</Text>
+ </TouchableOpacity>
+ <TouchableOpacity
+ style={[styles.botaoAcao, styles.botaoCancelarAcao]}
+ onPress={() => handleCancelarConsulta(consulta)}
+ >
+ <Text style={styles.botaoAcaoTexto}>✗ Cancelar</Text>
+ </TouchableOpacity>
+ </View>
+ )}
+ </View>
+ ))}
+ </>
+ )}
+ </>
+ }
+ />
+
+ {/* ─── MODAL DE AGENDAMENTO (NOVO) ─── */}
+ <Modal
+ visible={mostrarForm}
+ animationType="slide"
+ transparent={true}
+ onRequestClose={() => setMostrarForm(false)}
+ >
+ <KeyboardAvoidingView
+ behavior={Platform.OS === "ios" ? "padding" : "height"}
+ style={styles.modalOverlay}
+ >
+ <View style={styles.modalContainer}>
+ <Text style={styles.modalTitulo}>Nova Consulta</Text>
+ <ScrollView>
+ <Text style={styles.inputLabel}>ID do Médico *</Text>
+ <TextInput
+ style={styles.input}
+ placeholder="Ex: 1"
+ keyboardType="numeric"
+ value={formMedicoId}
+ onChangeText={setFormMedicoId}
+ />
+
+ <Text style={styles.inputLabel}>ID do Paciente *</Text>
+ <TextInput
+ style={styles.input}
+ placeholder="Ex: 1"
+ keyboardType="numeric"
+ value={formPacienteId}
+ onChangeText={setFormPacienteId}
+ />
+
+ <Text style={styles.inputLabel}>Data e Hora * (YYYY-MM-DDTHH:MM:SS)</Text>
+ <TextInput
+ style={styles.input}
+ placeholder="2026-05-25T10:00:00"
+ value={formDataHora}
+ onChangeText={setFormDataHora}
+ />
+
+ <Text style={styles.inputLabel}>Valor (R$) *</Text>
+ <TextInput
+ style={styles.input}
+ placeholder="Ex: 250"
+ keyboardType="numeric"
+ value={formValor}
+ onChangeText={setFormValor}
+ />
+
+ <Text style={styles.inputLabel}>Observações (opcional)</Text>
+ <TextInput
+ style={[styles.input, styles.inputMultilinha]}
+ placeholder="Ex: Consulta de rotina"
+ value={formObservacoes}
+ onChangeText={setFormObservacoes}
+ multiline
+ numberOfLines={3}
+ />
+
+ <TouchableOpacity
+ style={[
+ styles.botaoSalvar,
+ salvando && styles.botaoDesabilitado,
+ ]}
+ onPress={handleAgendarConsulta}
+ disabled={salvando}
+ >
+ {salvando ? (
+ <ActivityIndicator color="#fff" />
+ ) : (
+ <Text style={styles.botaoSalvarTexto}>Agendar Consulta</Text>
+ )}
+ </TouchableOpacity>
+
+ <TouchableOpacity
+ style={styles.botaoCancelarModal}
+ onPress={() => setMostrarForm(false)}
+ >
+ <Text style={styles.botaoCancelarModalTexto}>Cancelar</Text>
+ </TouchableOpacity>
+ </ScrollView>
+ </View>
+ </KeyboardAvoidingView>
+ </Modal>
+ </View>
+ );
 }
 
-/**
- * Estilos do App
- *
- * Note que removemos TODOS os estilos do card!
- * Eles agora estão encapsulados no componente ConsultaCard.
- *
- * App.tsx agora só tem estilos de layout geral:
- * - Container principal
- * - Cabeçalho
- * - Rodapé
- */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#79059C",
-  },
-  scrollContent: {
-    padding: 20,
-    paddingTop: 40,
-  },
-  header: {
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  titulo: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#fff",
-    marginBottom: 8,
-  },
-  subtitulo: {
-    fontSize: 18,
-    color: "#fff",
-    opacity: 0.9,
-  },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  statusBadge: {
-    backgroundColor: "#FFA500",
-    alignSelf: "flex-start",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginBottom: 20,
-  },
-  statusConfirmada: {
-    backgroundColor: "#4CAF50",
-  },
-  statusCancelada: {
-    backgroundColor: "#F44336",
-  },
-  statusTexto: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 12,
-  },
-  secao: {
-    marginBottom: 20,
-    paddingBottom: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#79059C",
-    marginBottom: 8,
-  },
-  valor: {
-    fontSize: 18,
-    color: "#333",
-    marginBottom: 4,
-  },
-  info: {
-    fontSize: 14,
-    color: "#666",
-    marginBottom: 2,
-  },
-  observacoes: {
-    fontSize: 14,
-    color: "#555",
-    fontStyle: "italic",
-    marginTop: 8,
-  },
-  acoes: {
-    marginTop: 10,
-  },
-  botaoContainer: {
-    marginBottom: 12,
-  },
-  mensagem: {
-    backgroundColor: "#E8F5E9",
-    padding: 16,
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: "#4CAF50",
-  },
-  mensagemCancelada: {
-    backgroundColor: "#FFEBEE",
-    padding: 16,
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: "#F44336",
-  },
-  mensagemTexto: {
-    fontSize: 16,
-    color: "#333",
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  rodape: {
-    marginTop: 24,
-    padding: 16,
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-    borderRadius: 12,
-  },
-  rodapeTexto: {
-    fontSize: 12,
-    color: "#fff",
-    textAlign: "center",
-    lineHeight: 18,
-  },
+ container: { flex: 1, backgroundColor: "#79059C" },
+ scrollContent: { padding: 20, paddingTop: 60, paddingBottom: 40 },
+ header: { alignItems: "center", marginBottom: 24 },
+ titulo: { fontSize: 28, fontWeight: "bold", color: "#fff", marginBottom: 8 },
+ subtitulo: { fontSize: 18, color: "#fff", opacity: 0.9 },
+ secaoTitulo: { fontSize: 18, fontWeight: "bold", color: "#fff", marginBottom: 12 },
+ secaoHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 24, marginBottom: 12 },
+ secaoTituloConsultas: { fontSize: 18, fontWeight: "bold", color: "#fff" },
+ card: { backgroundColor: "#fff", borderRadius: 12, padding: 16, marginBottom: 12 },
+ cardNome: { fontSize: 16, fontWeight: "bold", color: "#333", marginBottom: 4 },
+ cardInfo: { fontSize: 14, color: "#666", marginBottom: 2 },
+ cardObservacoes: { fontSize: 13, color: "#888", fontStyle: "italic", marginTop: 4 },
+ badge: { alignSelf: "flex-start", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 3, marginTop: 8 },
+ badgeAtivo: { backgroundColor: "#d4edda" },
+ badgeInativo: { backgroundColor: "#f8d7da" },
+ badgeTexto: { fontSize: 12, fontWeight: "bold", color: "#333" },
+ statusBadge: { alignSelf: "flex-start", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 3, marginBottom: 8 },
+ statusTexto: { fontSize: 11, fontWeight: "bold" },
+ acoesContainer: { flexDirection: "row", gap: 8, marginTop: 10 },
+ botaoAcao: { flex: 1, borderRadius: 8, padding: 10, alignItems: "center" },
+ botaoConfirmar: { backgroundColor: "#28a745" },
+ botaoCancelarAcao: { backgroundColor: "#dc3545" },
+ botaoAcaoTexto: { color: "#fff", fontWeight: "bold", fontSize: 13 },
+ botaoAgendar: { backgroundColor: "#fff", borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
+ botaoAgendarTexto: { color: "#79059C", fontWeight: "bold", fontSize: 14 },
+ erroContainer: { marginTop: 24, padding: 16, backgroundColor: "rgba(255,80,80,0.2)", borderRadius: 12, borderWidth: 1, borderColor: "rgba(255,80,80,0.5)" },
+ erroTexto: { fontSize: 14, color: "#fff", textAlign: "center", lineHeight: 22 },
+ modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+ modalContainer: { backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, maxHeight: "85%" },
+ modalTitulo: { fontSize: 20, fontWeight: "bold", color: "#333", marginBottom: 20, textAlign: "center" },
+ inputLabel: { fontSize: 14, fontWeight: "600", color: "#555", marginBottom: 6 },
+ input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 8, padding: 12, fontSize: 15, marginBottom: 16, color: "#333" },
+ inputMultilinha: { height: 80, textAlignVertical: "top" },
+ botaoSalvar: { backgroundColor: "#79059C", borderRadius: 10, padding: 16, alignItems: "center", marginBottom: 12 },
+ botaoDesabilitado: { opacity: 0.6 },
+ botaoSalvarTexto: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+ botaoCancelarModal: { borderWidth: 1, borderColor: "#ccc", borderRadius: 10, padding: 14, alignItems: "center", marginBottom: 8 },
+ botaoCancelarModalTexto: { color: "#666", fontSize: 15 },
 });
+
