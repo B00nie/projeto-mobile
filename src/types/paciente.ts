@@ -4,4 +4,4 @@ export type Paciente = {
   cpf: string;
   email: string;
   telefone?: string;
-};
+ }; 
