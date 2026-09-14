@@ -30,7 +30,7 @@ function formatarExibicao(date: Date): string {
  hour: "2-digit",
  minute: "2-digit",
  });
- return `${dataParte} as ${horaParte}`;
+ return `${dataParte} às ${horaParte}`;
 }
 
 // Formata para o backend: "2026-06-15T10:30:00"
@@ -51,7 +51,7 @@ export default function AgendarConsultaScreen({ navigation, route }: Props) {
  const [salvando, setSalvando] = useState(false);
  const [erro, setErro] = useState("");
 
- function onChangeData(_event: DateTimePickerEvent, date?: Date) {
+ function onChangeData(_event: DateTimePickerEvent | null, date?: Date) {
  if (date) {
  const nova = new Date(dataHora);
  nova.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
@@ -59,7 +59,7 @@ export default function AgendarConsultaScreen({ navigation, route }: Props) {
  }
  }
 
- function onChangeHora(_event: DateTimePickerEvent, date?: Date) {
+ function onChangeHora(_event: DateTimePickerEvent | null, date?: Date) {
  if (date) {
  const nova = new Date(dataHora);
  nova.setHours(date.getHours(), date.getMinutes(), 0, 0);
@@ -107,6 +107,20 @@ export default function AgendarConsultaScreen({ navigation, route }: Props) {
 
  {/* Seletor de data */}
  <Text style={styles.label}>Data da Consulta *</Text>
+ {/* O DateTimePicker nativo nao implementa seletores no Web. */}
+ {Platform.OS === "web" ? (
+ <input
+ type="date"
+ aria-label="Data da Consulta"
+ value={formatarParaBackend(dataHora).slice(0, 10)}
+ min={formatarParaBackend(new Date()).slice(0, 10)}
+ onChange={(event) => {
+ if (event.target.value) {
+ onChangeData(null, new Date(`${event.target.value}T00:00:00`));
+ }
+ }}
+ />
+ ) : (
  <DateTimePicker
  value={dataHora}
  mode="date"
@@ -114,15 +128,32 @@ export default function AgendarConsultaScreen({ navigation, route }: Props) {
  minimumDate={new Date()}
  onChange={onChangeData}
  />
+ )}
 
  {/* Seletor de hora */}
  <Text style={[styles.label, { marginTop: 8 }]}>Hora da Consulta *</Text>
+ {Platform.OS === "web" ? (
+ <input
+ type="time"
+ aria-label="Hora da Consulta"
+ value={formatarParaBackend(dataHora).slice(11, 16)}
+ onChange={(event) => {
+ if (event.target.value) {
+ const [hora, minuto] = event.target.value.split(":").map(Number);
+ const nova = new Date(dataHora);
+ nova.setHours(hora, minuto, 0, 0);
+ onChangeHora(null, nova);
+ }
+ }}
+ />
+ ) : (
  <DateTimePicker
  value={dataHora}
  mode="time"
  display="spinner"
  onChange={onChangeHora}
  />
+ )}
 
  <Text style={styles.dataSelecionada}>
  Agendado para: {formatarExibicao(dataHora)}

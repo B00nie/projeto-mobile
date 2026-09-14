@@ -35,3 +35,4 @@ O backend Spring Boot precisa estar rodando em `http://localhost:8080` (ver `src
 | Enzo | Paciente | CPF: 10298971747 |
 | Pedro | Paciente | CPF: 26849314106 |
 | Dra. Alessandra | Medica | CRM: 223344 |
+| Dr. Roberto Silva | Medica | CRM: 347170 |
